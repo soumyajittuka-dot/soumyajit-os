@@ -1,0 +1,7 @@
+ut=3\nset default=0\nmenuentry "Soumyajit OS [NET+GFX+KB]" { multiboot /boot/kernel.bin; boot; }\n' > iso/boot/grub/grub.cfg
+	grub-mkrescue -o soumyajit_os.iso iso
+
+run: iso
+	qemu-system-i386 -cdrom soumyajit_os.iso -netdev user,id=n1 -device e1000,netdev=n1 -m 128M
+
+.PHONY: all clean iso run

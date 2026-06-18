@@ -1,0 +1,12 @@
+clean:
+	rm -f *.o kernel.bin soumyajit_os.iso
+	rm -rf /tmp/osdev-iso
+	rm -f /tmp/soumyajit_os.iso
+
+iso: kernel.bin
+	mkdir -p /tmp/osdev-iso/boot/grub
+	cp kernel.bin /tmp/osdev-iso/boot/
+	printf 'set timeout=0\nset default=0\n\nmenuentry "Soumyajit OS" {\n    multiboot /boot/kernel.bin\n    boot\n}\n' > /tmp/osdev-iso/boot/grub/grub.cfg
+	grub-mkrescue -o /tmp/soumyajit_os.iso /tmp/osdev-iso
+	cp /tmp/soumyajit_os.iso ./soumyajit_os.iso
+	rm -rf /tmp/osdev-iso /tmp/soumyajit_os.iso
