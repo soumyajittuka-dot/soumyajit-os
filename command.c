@@ -5,6 +5,9 @@
 #include "ports.h"
 #include "mm.h"
 #include "types.h"
+#include "scheduler.h" // ps এর জন্য অ্যাড করলাম
+#include "vfs.h"       // ADDED: VFS এর জন্য
+#include "string.h"    // ADDED: string functions এর জন্য
 
 extern volatile uint32_t timer_ticks;
 extern void print_int(int n); // screen.c থেকে
@@ -27,7 +30,7 @@ void print_hex32(uint32_t n) {
 int string_equal(char* s1, char* s2) {
     int i = 0;
     while(s1[i] && s2[i]) {
-        if(s1[i]!= s2[i]) return 0;
+        if(s1[i] != s2[i]) return 0;
         i++;
     }
     return s1[i] == s2[i];
@@ -40,7 +43,7 @@ int string_equal_ignore_case(char* s1, char* s2) {
         char c2 = s2[i];
         if(c1 >= 'A' && c1 <= 'Z') c1 += 32;
         if(c2 >= 'A' && c2 <= 'Z') c2 += 32;
-        if(c1!= c2) return 0;
+        if(c1 != c2) return 0;
         i++;
     }
     return s1[i] == s2[i];
@@ -83,6 +86,13 @@ void execute_command(char* cmd) {
         vga_print_string("Available Commands:\n", VGA_COLOR_YELLOW);
         vga_print_string(" help - Show this message\n", VGA_COLOR_WHITE);
         vga_print_string(" clear - Clear the screen\n", VGA_COLOR_WHITE);
+        vga_print_string(" ps - Show running tasks\n", VGA_COLOR_CYAN);
+        vga_print_string(" ls - List files\n", VGA_COLOR_CYAN); 
+        vga_print_string(" touch <file> - Create file\n", VGA_COLOR_CYAN); 
+        vga_print_string(" cat <file> - Read file\n", VGA_COLOR_CYAN); 
+        vga_print_string(" echo <text> > <file> - Write file\n", VGA_COLOR_CYAN); 
+        vga_print_string(" rm <file> - Delete file\n", VGA_COLOR_CYAN); 
+        vga_print_string(" mkdir <dir> - Create directory\n", VGA_COLOR_CYAN); 
         vga_print_string(" ping - Test e1000 network\n", VGA_COLOR_WHITE);
         vga_print_string(" about - OS version info\n", VGA_COLOR_WHITE);
         vga_print_string(" fault - Trigger page fault\n", VGA_COLOR_WHITE);
@@ -94,10 +104,86 @@ void execute_command(char* cmd) {
         vga_print_string(" reboot - Reboot the system\n", VGA_COLOR_WHITE);
         vga_print_string(" color - Test all VGA colors\n", VGA_COLOR_WHITE);
     }
+    else if(string_equal(cmd, "ps")) {
+        ps_command();
+    }
+    else if(string_equal(cmd, "ls")) {
+        list_files();
+    }
+    else if(string_starts_with(cmd, "touch ")) {
+        char* filename = cmd + 6;
+        while(*filename == ' ') filename++;
+        if(*filename == '\0') {
+            vga_print_string("Usage: touch <filename>\n", VGA_COLOR_RED);
+        } else if(create_file(filename) == 0) {
+            vga_print_string("Created: ", VGA_COLOR_GREEN);
+            vga_print_string(filename, VGA_COLOR_WHITE);
+            vga_print_string("\n", VGA_COLOR_WHITE);
+        } else {
+            vga_print_string("Failed: File exists or no space\n", VGA_COLOR_RED);
+        }
+    }
+    else if(string_starts_with(cmd, "mkdir")) {
+        char* dirname = cmd + 5;
+        while(*dirname == ' ') dirname++;
+        if(*dirname == '\0') {
+            vga_print_string("Usage: mkdir <dirname>\n", VGA_COLOR_RED);
+        } else if(create_dir(dirname) == 0) {
+            vga_print_string("Created directory: ", VGA_COLOR_GREEN);
+            vga_print_string(dirname, VGA_COLOR_WHITE);
+            vga_print_string("\n", VGA_COLOR_WHITE);
+        } else {
+            vga_print_string("Failed: Directory exists or no space\n", VGA_COLOR_RED);
+        }
+    }
+    else if(string_starts_with(cmd, "echo ")) {
+        char* rest = cmd + 5;
+        char* arrow = string_find(rest, '>');
+        if(arrow) {
+            *arrow = '\0';
+            char* text = rest;
+            char* filename = arrow + 1;
+            while(*filename == ' ') filename++;
+            while(*text == ' ') text++;
+
+            if(write_file(filename, (uint8_t*)text, strlen(text)) >= 0) {
+                vga_print_string("Wrote to ", VGA_COLOR_GREEN);
+                vga_print_string(filename, VGA_COLOR_WHITE);
+                vga_print_string("\n", VGA_COLOR_WHITE);
+            } else {
+                vga_print_string("Write failed: File not found\n", VGA_COLOR_RED);
+            }
+        } else {
+            vga_print_string("Usage: echo <text> > <filename>\n", VGA_COLOR_RED);
+        }
+    }
+    else if(string_starts_with(cmd, "cat ")) {
+        char* filename = cmd + 4;
+        while(*filename == ' ') filename++;
+        uint8_t buffer[256];
+        int bytes = read_file(filename, buffer, 255);
+        if(bytes >= 0) {
+            buffer[bytes] = '\0';
+            vga_print_string((char*)buffer, VGA_COLOR_WHITE);
+            vga_print_string("\n", VGA_COLOR_WHITE);
+        } else {
+            vga_print_string("File not found\n", VGA_COLOR_RED);
+        }
+    }
+    else if(string_starts_with(cmd, "rm ")) {
+        char* filename = cmd + 3;
+        while(*filename == ' ') filename++;
+        if(delete_file(filename) == 0) {
+            vga_print_string("Deleted\n", VGA_COLOR_GREEN);
+        } else {
+            vga_print_string("File not found\n", VGA_COLOR_RED);
+        }
+    }
     else if(string_equal_ignore_case(cmd, "ping")) {
         vga_print_string("PING: Sending packet to 8.8.8.8...\n", VGA_COLOR_CYAN);
         unsigned char packet[64];
         for(int i = 0; i < 64; i++) packet[i] = i;
+        (void)packet; // Added this to fix the [-Wunused-but-set-variable] warning
         //e1000_send_packet(packet, 64);
         vga_print_string("PING: 64 bytes sent!\n", VGA_COLOR_GREEN);
     }
@@ -117,13 +203,15 @@ void execute_command(char* cmd) {
     }
     else if(string_equal(cmd, "about")) {
         vga_print_string("Soumyajit OS v2.2\n", VGA_COLOR_GREEN);
-        vga_print_string("Features: IDT, Paging, GFX, e1000, Heap\n", VGA_COLOR_GREEN);
+        vga_print_string("Features: IDT, Paging, GFX, e1000, Heap, VFS\n", VGA_COLOR_GREEN);
         vga_print_string("Built: 7:48 AM with Intel Manuals\n", VGA_COLOR_GREEN);
     }
     else if(string_equal(cmd, "meminfo")) {
         uint32_t cr0, cr3;
+        // FIXED: _asm_ to __asm__
         __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
         __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+        
         vga_print_string("Memory Info:\n", VGA_COLOR_YELLOW);
         vga_print_string(" CR0: ", VGA_COLOR_WHITE); print_hex32(cr0);
         if(cr0 & 0x80000000) vga_print_string(" Paging ON\n", VGA_COLOR_GREEN);
@@ -152,6 +240,8 @@ void execute_command(char* cmd) {
         uint8_t good = 0x02;
         while(good & 0x02) good = inb(0x64);
         outb(0x64, 0xFE);
+        
+        // FIXED: _asm_ to __asm__
         __asm__ volatile("hlt");
     }
     else if(string_equal(cmd, "color")) {

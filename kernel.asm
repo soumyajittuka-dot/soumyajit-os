@@ -1,13 +1,13 @@
 [BITS 32]
 
 ; ==========================================
-; Multiboot Header - CORRECT SYNTAX
+; Multiboot Header - FIXED
 ; ==========================================
 section.multiboot
 align 4
     dd 0x1BADB002 ; magic
-    dd 0x00000003 ; flags = ALIGN | MEMINFO
-    dd -(0x1BADB002 + 0x00000003) ; checksum
+    dd 0x00000000 ; flags = 0, no extra fields needed
+    dd -0x1BADB002 ; checksum = -(0x1BADB002 + 0x00000000)
 
 section.text
 global _start
